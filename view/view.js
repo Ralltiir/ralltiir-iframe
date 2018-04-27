@@ -5,7 +5,9 @@
 
 define(function (require) {
     var animation = require('../utils/animation');
+    var handleMessages = require('./handleMessages');
     var ua = require('../utils/ua');
+    var features = require('../utils/features');
     var URL = require('../utils/url');
     var Loading = require('./loading');
     var dom = require('../utils/dom');
@@ -31,6 +33,11 @@ define(function (require) {
         '</div>'
     ].join('');
 
+    var iframeShell = require('iframe-shell');
+    var Loader = iframeShell.loader;
+
+    var supportCalcHeight = features.detectCSSCalc() && features.detectCSSViewportUnits();
+
     prepareEnvironment();
 
     // eslint-disable-next-line
@@ -51,6 +58,7 @@ define(function (require) {
             this.setData(this.options);
         }
         this.loading = new Loading(this.viewEl);
+        this.resizeContainer = this._resizeContainer.bind(this);
     }
 
     View.prototype.initElement = function (viewEl) {
@@ -69,50 +77,71 @@ define(function (require) {
 
     View.prototype.render = function () {
         var self = this;
-        return this.pendingFetch
-        .then(function (xhr) {
+        // return this.pendingFetch
+        return Promise.resolve()
+        .then(function () {
             self.performance.domLoading = Date.now();
-            var html = xhr.data || '';
-            var docfrag = Render.parse(html);
 
-            self.loading.hide();
-
-            var view = docfrag.querySelector('.rt-view');
-            if (!view) {
-                var message = '".rt-view" not found in retrieved HTML'
-                + '(from ' + self.backendUrl + ' )'
-                + 'abort rendering...';
-                throw new Error(message);
-            }
-            self.renderer.moveClasses(view, self.viewEl);
-
-            return Promise.resolve()
-            .then(function () {
-                return self.renderer.render(self.headEl, docfrag.querySelector('.rt-head'), {
-                    replace: true,
-                    onContentLoaded: function normalizeSSR() {
-                        var opts = optionsFromDOM(dom.wrapElementFromString(html));
-                        self.setData(normalize(opts));
-                    }
-                })
-                .catch(function (err) {
-                    err.code = err.code || 910;
-                    throw err;
-                });
-            })
-            .then(function () {
-                self.performance.headInteractive = Date.now();
-                return self.renderer.render(self.bodyEl, docfrag.querySelector('.rt-body'), {
-                    replace: true,
-                    onContentLoaded: function normalizeSSR() {
-                        self.performance.domContentLoaded = Date.now();
-                    }
-                })
-                .catch(function (err) {
-                    err.code = err.code || 911;
-                    throw err;
-                });
+            var height = supportCalcHeight
+                ? 'calc(100vh - ' + self.headEl.clientHeight + 'px)'
+                : self._getViewerHeight() + 'px'
+            ;
+            // debugger;
+            self.loader = new Loader({
+                url: self.backendUrl,
+                useMipCache: false,
+                viewer: {
+                    target: self.bodyEl,
+                    height: height
+                }
             });
+            handleMessages(self);
+
+            self.loader.on(self.options.notMip ? 'complete' : 'mip-mippageload', function () {
+                self.loading.hide();
+            });
+
+            self.loader.create();
+            self.loader.attach();
+
+            // self.loading.hide();
+
+            // var view = docfrag.querySelector('.rt-view');
+            // if (!view) {
+            //     var message = '".rt-view" not found in retrieved HTML'
+            //     + '(from ' + self.backendUrl + ' )'
+            //     + 'abort rendering...';
+            //     throw new Error(message);
+            // }
+            // self.renderer.moveClasses(view, self.viewEl);
+
+            // return Promise.resolve()
+            // .then(function () {
+            //     // return self.renderer.render(self.headEl, docfrag.querySelector('.rt-head'), {
+            //     //     replace: true,
+            //     //     onContentLoaded: function normalizeSSR() {
+            //     //         var opts = optionsFromDOM(dom.wrapElementFromString(html));
+            //     //         self.setData(normalize(opts));
+            //     //     }
+            //     // })
+            //     // .catch(function (err) {
+            //     //     err.code = err.code || 910;
+            //     //     throw err;
+            //     // });
+            // })
+            // .then(function () {
+            //     // self.performance.headInteractive = Date.now();
+            //     // return self.renderer.render(self.bodyEl, docfrag.querySelector('.rt-body'), {
+            //     //     replace: true,
+            //     //     onContentLoaded: function normalizeSSR() {
+            //     //         self.performance.domContentLoaded = Date.now();
+            //     //     }
+            //     // })
+            //     // .catch(function (err) {
+            //     //     err.code = err.code || 911;
+            //     //     throw err;
+            //     // });
+            // });
         })
         .then(function () {
             self.populated = true;
@@ -215,6 +244,7 @@ define(function (require) {
             self.restoreStates();
             self.attached = true;
             self.performance.domInteractive = Date.now();
+            self._startListenResize();
             setTimeout(function () {
                 self.trigger('rt.attached');
                 resolve();
@@ -234,6 +264,7 @@ define(function (require) {
     View.prototype.setDetached = function () {
         this.attached = false;
         this.viewEl.remove();
+        this._stopListenResize();
         this.trigger('rt.detached');
     };
 
@@ -295,14 +326,15 @@ define(function (require) {
         this.backendUrl = this.getBackendUrl(url);
         this.backendUrl = URL.setQuery(this.backendUrl, 'rt', 'true');
         this.performance.requestStart = Date.now();
-        return http.ajax(this.backendUrl, {
-            headers: headers || {},
-            xhrFields: {withCredentials: true}
-        })
-        .catch(function (err) {
-            err.code = err.status || 900;
-            throw err;
-        });
+        return Promise.resolve(null);
+        // return http.ajax(this.backendUrl, {
+        //     headers: headers || {},
+        //     xhrFields: {withCredentials: true}
+        // })
+        // .catch(function (err) {
+        //     err.code = err.status || 900;
+        //     throw err;
+        // });
     };
 
     View.prototype.getBackendUrl = function (url) {
@@ -367,6 +399,41 @@ define(function (require) {
 
         return ret;
     }
+
+    View.prototype._resizeContainer = function () {
+        // console.log('_resizeContainer', this);
+        if (this.headEl && this.bodyEl) {
+            var height = this._getViewerHeight();
+            // console.log('height', height);
+            this.loader.setConfig({
+                viewer: {
+                    height: height + 'px'
+                }
+            });
+        }
+    };
+
+    View.prototype._getViewerHeight = function () {
+        if (this.headEl) {
+            var height = window.innerHeight - this.headEl.clientHeight;
+            return height;
+        }
+        return window.innerHeight - 44;
+    };
+
+    View.prototype._startListenResize = function () {
+        logger.debug('_startListenResize', supportCalcHeight);
+        if (!supportCalcHeight && this.loader) {
+            window.addEventListener('resize', this.resizeContainer);
+        }
+    };
+
+    View.prototype._stopListenResize = function () {
+        logger.debug('_stopListenResize', supportCalcHeight);
+        if (!supportCalcHeight && this.loader) {
+            window.removeEventListener('resize', this.resizeContainer);
+        }
+    };
 
     View.prototype.createContainer = function () {
         var viewEl = dom.elementFromString(html);

@@ -1,13 +1,18 @@
 {
-  "name": "ralltiir-application",
-  "version": "4.3.1",
+  "name": "ralltiir-iframe",
+  "version": "4.4.3",
   "dependencies": {
     "@searchfe/assert": {
-      "version": "1.0.0"
+      "version": "1.0.0",
+      "integrity": "sha512-INeZlzcMK1ainjU9FpBf8jrqq7wzFF0eDb5JCrHpp/fMzdIlbdDfhM3bprtzrSmOo/rA7AdP4Ch8p4RNxuj2jg=="
     },
     "@searchfe/underscore": {
       "version": "1.0.1",
       "integrity": "sha512-H4iktWJdRcG0XYOKkHOZoOvZH7Ag/FTwMTFhCH91ojy8dh2opcP36UUs3X8Jz7t6DKcKWLGpQJWmS5GMDymm/g=="
+    },
+    "iframe-shell": {
+      "version": "0.0.3",
+      "integrity": "sha512-5B/i0H2nmgYlF1f1KOkqVc/ZfZu4MXPV/VC+lHk0DrPTHQCOOquaQUmUbLB37OQ7xSRQF0i4q7eJqOcIJJUf4A=="
     }
   }
 }
